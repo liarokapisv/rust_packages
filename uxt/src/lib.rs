@@ -5,7 +5,7 @@ pub use ux::{
     u28, u29, u3, u30, u31, u4, u5, u6, u7, u9,
 };
 
-pub trait Ux: Into<Self::Rep>
+pub trait Ux: Into<Self::Rep> + Default
 where
     Self: TryFrom<Self::Rep>,
 {

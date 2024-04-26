@@ -76,7 +76,7 @@ const fn exp2f(mut x: f32) -> f32 {
     let z: f64 = (x - uf) as f64;
     /* Compute r = exp2(y) = exp2ft[i0] * p(z). */
     let r: f64 = f64::from_bits(EXP2FT[i0 as usize]);
-    let t: f64 = r as f64 * z;
+    let t: f64 = r * z;
     let r: f64 = r + t * (p1 as f64 + z * p2 as f64) + t * (z * z) * (p3 as f64 + z * p4 as f64);
 
     /* Scale by 2**k */
