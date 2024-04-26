@@ -21,26 +21,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87ca1caa64ef4ed453e68bb3db612e51cf1b2f5b871337f0fcab1c8f87cc3dff"
 
 [[package]]
-name = "epsi"
-version = "0.1.1"
+name = "num-integer"
+version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "917a7ce5cf4761bbfceebff450ef9cab02d98087bf04f28eea3035dbe7da925b"
-
-[[package]]
-name = "epui"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f40c5d22454a05692c258a7537fe0a496f3f4b19d2c9045720c567306c493c29"
-
-[[package]]
-name = "midpoint"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ac995bda97a9131f568571fa80f3e6890d0a30268300a72e42b0d2488b8deee"
+checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
 dependencies = [
- "epsi",
- "epui",
- "primitive_promotion",
+ "num-traits",
 ]
 
 [[package]]
@@ -58,24 +44,34 @@ version = "0.1.0"
 dependencies = [
  "array-const-fn-init",
  "const_soft_float",
- "midpoint",
+ "num-integer",
  "num-traits",
+ "proc-macro2",
  "static_assertions",
  "uxt",
  "xbounded",
 ]
 
 [[package]]
-name = "primitive_promotion"
-version = "0.1.4"
+name = "proc-macro2"
+version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "427e9b700a2bc50534879b34b38ac7eac5418bf3de6cb991bbbfbec9cd4e196f"
+checksum = "e835ff2298f5721608eb1a980ecaee1aef2c132bf95ecc026a11b7bf3c01c02e"
+dependencies = [
+ "unicode-ident",
+]
 
 [[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "unicode-ident"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 
 [[package]]
 name = "ux"

@@ -10,4 +10,6 @@ xbounded = { path = "../xbounded" }
 const_soft_float = { version = "0.1.1", features = ["no_std"] }
 array-const-fn-init = "0.1.1"
 static_assertions = "1.1.0"
-midpoint = "0.1.5"
+num-integer = "0.1.46"
+# TODO: Delete this after rustc upgraded.
+proc-macro2 = "=1.0.79"

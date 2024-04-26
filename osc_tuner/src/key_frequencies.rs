@@ -92,6 +92,7 @@ pub const fn nth_key_frequency(n: f32) -> f32 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
 pub struct MicrosPeriod(NonZeroU16);
 
 pub const fn nth_key_period(n: f32) -> MicrosPeriod {

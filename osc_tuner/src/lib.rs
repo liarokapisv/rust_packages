@@ -4,17 +4,18 @@
 #![feature(unboxed_closures)]
 #![feature(const_option)]
 #![feature(impl_trait_in_assoc_type)]
+#![feature(const_trait_impl)]
 #![no_std]
 
 use core::{cell::Cell, future::Future, ops::Sub};
 
 use array_const_fn_init::array_const_fn_init;
 use cache::Cache;
+use num_integer::Average;
 use static_assertions as sa;
 
 use domain::{C0, C1, C4, C9};
 use key_frequencies::{nth_key_period, MicrosPeriod};
-use midpoint::MidpointViaPrimitivePromotionExt;
 use num_traits::One;
 use table::Table;
 use uxt::Ux;
@@ -48,11 +49,8 @@ pub trait Oscf {
 
 trait OscfExtPriv: Oscf
 where
-    <Self::DacValue as Ux>::Rep: Sub<Output = <Self::DacValue as Ux>::Rep>
-        + One
-        + PartialOrd
-        + MidpointViaPrimitivePromotionExt
-        + Copy,
+    <Self::DacValue as Ux>::Rep:
+        Sub<Output = <Self::DacValue as Ux>::Rep> + One + PartialOrd + Average + Copy,
 {
     async fn async_search(
         &mut self,
@@ -71,7 +69,7 @@ where
             }
 
             let mid = <Self::DacValue as TryFrom<<Self::DacValue as Ux>::Rep>>::try_from(
-                low.into().midpoint_via_primitive_promotion(&high.into()),
+                low.into().average_floor(&high.into()),
             )
             .unwrap_or_else(|_| panic!("should never happen"));
 
@@ -105,7 +103,6 @@ where
     ) -> Self::DacValue {
         self.async_search_full(
             {
-                struct Impl<'a, G, C>(G, &'a C);
                 impl<
                         'a,
                         O: Oscf + ?Sized,
@@ -114,8 +111,8 @@ where
                     > AsyncGetPeriodGen<O> for Impl<'a, G, C>
                 {
                     type Ret<'s> = impl AsyncGetPeriod<O>
-                        where
-                            Self: 's, O: 's;
+                            where
+                                Self: 's, O: 's;
 
                     fn call<'s>(&'s self, o: &'s mut O) -> Self::Ret<'s> {
                         move |dac| async move {
@@ -128,6 +125,7 @@ where
                         }
                     }
                 }
+                struct Impl<'a, G, C>(G, &'a C);
                 Impl(async_get, cache)
             },
             target,
@@ -156,7 +154,6 @@ where
             slot.set(
                 self.async_search_full_cached(
                     {
-                        struct Impl<G>(usize, G);
                         impl<O: Oscf + ?Sized, G: IndexedAsyncGetPeriodGen<O>>
                             AsyncGetPeriodGen<O> for Impl<G>
                         {
@@ -168,6 +165,7 @@ where
                                 move |dac| async move { self.1.call(o).call(self.0, dac).await }
                             }
                         }
+                        struct Impl<G>(usize, G);
                         Impl(i, async_get_c4_to_c9)
                     },
                     cache,
@@ -191,8 +189,6 @@ where
             async_get,
             async_get,
             {
-                #[derive(Clone, Copy)]
-                struct Impl<G>(G);
                 impl<O: Oscf + ?Sized, G: AsyncGetPeriodGen<O>>
                     IndexedAsyncGetPeriodGen<O> for Impl<G>
                 {
@@ -204,6 +200,8 @@ where
                         move |_, dac| async move { self.0.call(o).call(dac).await }
                     }
                 }
+                #[derive(Clone, Copy)]
+                struct Impl<G>(G);
                 Impl(async_get)
             },
             cache,
@@ -222,7 +220,7 @@ where
         let one_rep = <<Self::DacValue as Ux>::Rep as One>::one();
         let max_rep = <Self::DacValue as Ux>::MAX_REP;
 
-        let main_dac_target = try_from(zero_rep.midpoint_via_primitive_promotion(&max_rep));
+        let main_dac_target = try_from(zero_rep.average_floor(&max_rep));
 
         self.set_offset_dac(zero).await;
         self.set_main_dac(main_dac_target).await;
@@ -234,7 +232,6 @@ where
         self.set_main_dac(main_dac_target_minus_one).await;
         self.async_search_full(
             {
-                struct Impl;
                 impl<O: Oscf + ?Sized> AsyncGetPeriodGen<O> for Impl {
                     type Ret<'s> = impl AsyncGetPeriod<O>
                     where
@@ -247,6 +244,7 @@ where
                         }
                     }
                 }
+                struct Impl;
                 Impl
             },
             period,
@@ -259,7 +257,6 @@ where
         main_table: &Table<Self::DacValue>,
         offset_table: &Table<Self::DacValue>,
     ) {
-        struct Impl<'a, D>(&'a Cell<D>);
         impl<'a, O: Oscf + ?Sized> AsyncGetPeriodGen<O> for Impl<'a, O::DacValue> {
             type Ret<'s> = impl AsyncGetPeriod<O>
             where
@@ -273,14 +270,13 @@ where
                 }
             }
         }
+        struct Impl<'a, D>(&'a Cell<D>);
 
         self.tune_midi_frequencies_impl(
             offset_table,
             Impl(&main_table.c0),
             Impl(&main_table.c1),
             {
-                #[derive(Clone, Copy)]
-                struct Impl<'a, D: Ux>(&'a Table<D>);
                 impl<'a, O: Oscf + ?Sized> IndexedAsyncGetPeriodGen<O> for Impl<'a, O::DacValue> {
                     type Ret<'s> = impl IndexedAsyncGetPeriod<O>
                     where
@@ -294,6 +290,8 @@ where
                         }
                     }
                 }
+                #[derive(Clone, Copy)]
+                struct Impl<'a, D: Ux>(&'a Table<D>);
                 Impl(main_table)
             },
             &NoCache::new(),
@@ -311,8 +309,6 @@ where
         self.tune_midi_frequencies_single(
             main_table,
             {
-                #[derive(Copy, Clone)]
-                struct Impl;
                 impl<O: Oscf + ?Sized> AsyncGetPeriodGen<O> for Impl {
                     type Ret<'s> = impl AsyncGetPeriod<O>
                     where O : 's;
@@ -323,6 +319,8 @@ where
                         }
                     }
                 }
+                #[derive(Copy, Clone)]
+                struct Impl;
                 Impl
             },
             cache,
@@ -335,21 +333,15 @@ where
 }
 
 impl<F: OscfExt + ?Sized> OscfExtPriv for F where
-    <Self::DacValue as Ux>::Rep: Sub<Output = <Self::DacValue as Ux>::Rep>
-        + One
-        + PartialOrd
-        + MidpointViaPrimitivePromotionExt
-        + Copy
+    <Self::DacValue as Ux>::Rep:
+        Sub<Output = <Self::DacValue as Ux>::Rep> + One + PartialOrd + Average + Copy
 {
 }
 
 pub trait OscfExt: Oscf
 where
-    <Self::DacValue as Ux>::Rep: Sub<Output = <Self::DacValue as Ux>::Rep>
-        + One
-        + PartialOrd
-        + MidpointViaPrimitivePromotionExt
-        + Copy,
+    <Self::DacValue as Ux>::Rep:
+        Sub<Output = <Self::DacValue as Ux>::Rep> + One + PartialOrd + Average + Copy,
 {
     fn tune_midi_frequencies(
         &mut self,
@@ -361,12 +353,12 @@ where
     }
 }
 
-pub trait AsyncGetPeriod<O: Oscf + ?Sized>: FnOnce<(O::DacValue,)> {
+trait AsyncGetPeriod<O: Oscf + ?Sized>: FnOnce<(O::DacValue,)> {
     type Ret: Future<Output = MicrosPeriod>;
     fn call(self, value: O::DacValue) -> Self::Ret;
 }
 
-pub trait IndexedAsyncGetPeriod<O: Oscf + ?Sized>: FnOnce<(usize, O::DacValue)> {
+trait IndexedAsyncGetPeriod<O: Oscf + ?Sized>: FnOnce<(usize, O::DacValue)> {
     type Ret: Future<Output = MicrosPeriod>;
     fn call(self, index: usize, value: O::DacValue) -> Self::Ret;
 }
@@ -392,7 +384,7 @@ impl<
     }
 }
 
-pub trait AsyncGetPeriodGen<O: Oscf + ?Sized> {
+trait AsyncGetPeriodGen<O: Oscf + ?Sized> {
     type Ret<'s>: AsyncGetPeriod<O>
     where
         Self: 's,
@@ -401,7 +393,7 @@ pub trait AsyncGetPeriodGen<O: Oscf + ?Sized> {
     fn call<'s>(&'s self, o: &'s mut O) -> Self::Ret<'s>;
 }
 
-pub trait IndexedAsyncGetPeriodGen<O: Oscf + ?Sized> {
+trait IndexedAsyncGetPeriodGen<O: Oscf + ?Sized> {
     type Ret<'s>: IndexedAsyncGetPeriod<O>
     where
         Self: 's,
