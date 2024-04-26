@@ -1,0 +1,15 @@
+.vscode/
+.cache/
+.nvimrc
+.direnv/
+.gdbinit
+build/
+build_m4/
+build_m7/
+test_output/
+CMakeUserPresets.txt
+CMakeUserPresets.json
+compile_commands.json
+result
+.DS_Store
+target

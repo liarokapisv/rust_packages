@@ -1,0 +1,13 @@
+[package]
+name = "osc_tuner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+num-traits = "0.2.18"
+uxt = { path = "../uxt" }
+xbounded = { path = "../xbounded" }
+const_soft_float = { version = "0.1.1", features = ["no_std"] }
+array-const-fn-init = "0.1.1"
+static_assertions = "1.1.0"
+midpoint = "0.1.5"
