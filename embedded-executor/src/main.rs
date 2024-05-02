@@ -113,7 +113,7 @@ const VTABLE: RawWakerVTable =
 // The tasks are only pinnable through the provided macro and they cannot be leaked.
 //
 // TODO!
-// This is simply an implementation limitation of the PoC, the executor must outlive the tasks.
+// See the Drop impl for drop safety issues.
 
 impl Executor {
     pub fn new() -> Self {
@@ -226,9 +226,21 @@ impl Executor {
     }
 }
 
-#[doc(hidden)]
-fn __unsafe_ref_from_raw(task: &PinnedTask) -> UnsafeRef<PinnedTask> {
-    unsafe { UnsafeRef::from_raw(task) }
+// NOTE:
+// This is needed in case the executor is manually dropped before
+// the tasks are dropped. If a task is woken up through its Waker,
+// the waker would access invalid memory.
+// This is a workaround for the common case but it is not guaranteed to be
+// called. Maybe access through a macro?
+
+impl Drop for Executor {
+    fn drop(&mut self) {
+        let queue = self.queue.lock();
+        for task in queue.iter() {
+            let mut waker = task.waker.lock();
+            *waker = Some(ExecutorWaker::Dead);
+        }
+    }
 }
 
 macro_rules! spawn_task {
