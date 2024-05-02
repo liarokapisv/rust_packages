@@ -1,0 +1,12 @@
+[package]
+name = "embedded-executor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+intrusive-collections = { version = "0.9.6", default-features = false }
+spin = { version = "0.9.8", default-features = false, features = ["spin_mutex", "ticket_mutex"] }
+embassy-executor = { version = "0.5.0", features = ["arch-std"] }
+# TODO: Delete this after rustc upgraded.
+proc-macro2 = "=1.0.79"
+tokio = { version = "1", features = [ "full" ] }
