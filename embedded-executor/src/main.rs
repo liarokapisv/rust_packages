@@ -21,7 +21,7 @@ use std::{
 
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListAtomicLink, UnsafeRef};
 
-use core::task::{Context, Poll};
+use core::task::Context;
 
 use yield_now::yield_now;
 
@@ -153,11 +153,7 @@ impl Executor {
     }
 
     pub fn poll(&self) {
-        let task = {
-            let mut queue = self.queue.lock();
-            let front = queue.pop_front();
-            front
-        };
+        let task = self.queue.lock().pop_front();
         if let Some(task) = task {
             let task = unsafe {
                 // # Safety
@@ -165,63 +161,52 @@ impl Executor {
                 Pin::into_inner_unchecked(task)
             };
             let task = task.as_ref();
-            let raw_waker = {
-                let mut waker = task.waker.lock();
-                let exec_waker = waker.insert(ExecutorWaker::Alive(AliveExecutorWaker {
-                    task: unsafe {
+            let waker = {
+                let raw_waker = {
+                    let mut waker = task.waker.lock();
+                    let exec_waker = waker.insert(ExecutorWaker::Alive(AliveExecutorWaker {
+                        task: unsafe {
+                            // # Safety
+                            // Tasks are pinned so we can pin them safely.
+                            // We only ever access task through a shared reference.
+                            // Task is still alive due to the auto-removal guarantee.
+                            Pin::new_unchecked(UnsafeRef::from_raw(task))
+                        },
+                        queue: unsafe {
+                            // # Safety
+                            // Queue is always accessed through a shared reference (Mutex)
+                            // Any references that persist within the wakers inside the tasks
+                            // will be purged when the executor is dropped.
+                            UnsafeRef::from_raw(&self.queue)
+                        },
+                    }));
+                    let raw = RawWaker::new(
                         // # Safety
-                        // Tasks are pinned so we can pin them safely.
-                        // We only ever access task through a shared reference.
-                        // Task is still alive due to the auto-removal guarantee.
-                        Pin::new_unchecked(UnsafeRef::from_raw(task))
-                    },
-                    queue: unsafe {
-                        // # Safety
-                        // Queue is always accessed through a shared reference (Mutex)
-                        // Any references that persist within the wakers inside the tasks
-                        // will be purged when the executor is dropped.
-                        UnsafeRef::from_raw(&self.queue)
-                    },
-                }));
-                let raw = RawWaker::new(
+                        // Casting to properly pass the data that will be used with the vtable.
+                        unsafe {
+                            transmute::<*const ExecutorWaker, *const ()>(
+                                exec_waker as *const ExecutorWaker,
+                            )
+                        },
+                        &VTABLE,
+                    );
+                    drop(waker);
+                    raw
+                };
+                unsafe {
                     // # Safety
-                    // Casting to properly pass the data that will be used with the vtable.
-                    unsafe {
-                        transmute::<*const ExecutorWaker, *const ()>(
-                            exec_waker as *const ExecutorWaker,
-                        )
-                    },
-                    &VTABLE,
-                );
-                drop(waker);
-                raw
-            };
-            let waker = unsafe {
-                // # Safety
-                // Underlying waker is Send + Sync and is constructed from a valid vtable.
-                Waker::from_raw(raw_waker)
+                    // Underlying waker is Send + Sync and is constructed from a valid vtable.
+                    Waker::from_raw(raw_waker)
+                }
             };
             let mut context = Context::from_waker(&waker);
-            let poll_result = {
-                let mut future = task.future.lock();
-                let pinned_future = unsafe {
-                    // # Safety
-                    // The underlying object is alive otherwise, it would auto-remove itself
-                    future.get_pinned()
-                };
-                pinned_future.poll(&mut context)
+            let mut future = task.future.lock();
+            let pinned_future = unsafe {
+                // # Safety
+                // The underlying object is alive otherwise, it would auto-remove itself
+                future.get_pinned()
             };
-            if let Poll::Pending = poll_result {
-                if !task.link.is_linked() {
-                    self.queue.lock().push_back(unsafe {
-                        // # Safety
-                        // Tasks are pinned so we can pin them safely.
-                        // We only ever access task through a shared reference.
-                        // Task is still alive due to the auto-removal guarantee.
-                        Pin::new_unchecked(UnsafeRef::from_raw(task))
-                    });
-                }
-            }
+            let _ = pinned_future.poll(&mut context);
         }
     }
 }
