@@ -17,6 +17,7 @@ use spin::mutex::SpinMutex;
 use std::{
     println,
     sync::atomic::{AtomicUsize, Ordering},
+    task::Poll,
 };
 
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListAtomicLink, UnsafeRef};
@@ -206,7 +207,18 @@ impl Executor {
                 // The underlying object is alive otherwise, it would auto-remove itself
                 future.get_pinned()
             };
-            let _ = pinned_future.poll(&mut context);
+
+            if let Poll::Pending = pinned_future.poll(&mut context) {
+                if !task.link.is_linked() {
+                    self.queue.lock().push_back(unsafe {
+                        // # Safety
+                        // Tasks are pinned so we can pin them safely.
+                        // We only ever access task through a shared reference.
+                        // Task is still alive due to the auto-removal guarantee.
+                        Pin::new_unchecked(UnsafeRef::from_raw(task))
+                    });
+                }
+            }
         }
     }
 }
@@ -232,12 +244,20 @@ macro_rules! spawn_task {
     ($executor:expr, $future:expr) => {
         erase_future!(future, $future);
         yield_now().await;
-        let task = PinnedTask {
-            future: SpinMutex::new(future),
-            waker: SpinMutex::new(None),
-            link: LinkedListAtomicLink::new(),
+        let slot = (|| {
+            static SLOT: SpinMutex<core::mem::MaybeUninit<PinnedTask>> =
+                SpinMutex::new(core::mem::MaybeUninit::uninit());
+            &SLOT
+        })();
+        let pinned_task = {
+            let mut slot = slot.lock();
+            let task = slot.write(PinnedTask {
+                future: SpinMutex::new(future),
+                waker: SpinMutex::new(None),
+                link: LinkedListAtomicLink::new(),
+            });
+            unsafe { Pin::new_unchecked(UnsafeRef::from_raw(task)) }
         };
-        let pinned_task = unsafe { Pin::new_unchecked(UnsafeRef::from_raw(&task)) };
         let _handle = $executor.__push_back(pinned_task);
     };
 }
@@ -246,29 +266,33 @@ macro_rules! spawn_task {
 async fn main() {
     let i: AtomicUsize = 0.into();
     let executor = Executor::new();
-    spawn_task!(executor, async {
-        let mut buffer = [0; 1000];
-        loop {
-            let j = i.load(Ordering::Acquire);
-            buffer[j % 1000] = j;
-            println!("{}", buffer[j]);
-            yield_now().await
-        }
-    });
-    spawn_task!(executor, async {
-        loop {
-            let mut j = i.load(Ordering::Relaxed);
-            j += 1;
-            if j == 1000 {
-                j = 0;
+    for j in 0..10 {
+        spawn_task!(executor, async {
+            let mut buffer = [0; 1000];
+            loop {
+                let j = i.load(Ordering::Acquire);
+                buffer[j % 1000] = j;
+                println!("{}", buffer[j]);
+                yield_now().await
             }
-            i.store(j, Ordering::Release);
-            yield_now().await
-        }
-    });
-    std::thread::scope(|scope| {
-        scope.spawn(|| loop {
-            executor.poll();
         });
-    });
+        spawn_task!(executor, async {
+            loop {
+                let mut j = i.load(Ordering::Relaxed);
+                j += 1;
+                if j == 1000 {
+                    j = 0;
+                }
+                i.store(j, Ordering::Release);
+                yield_now().await
+            }
+        });
+        if j == 9 {
+            std::thread::scope(|scope| {
+                scope.spawn(|| loop {
+                    executor.poll();
+                });
+            });
+        }
+    }
 }
